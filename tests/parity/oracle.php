@@ -2,17 +2,21 @@
 
 // Runs the PHP package on the cases read as JSON from stdin, and prints the results as JSON.
 // Used by tests/parity/test_parity.py; BENIN_BUSINESS_ID_PHP_DIR points to the PHP package,
-// installed with its development dependencies.
+// installed with its development dependencies (Guzzle and Laravel).
 
 declare(strict_types=1);
 
 use Egbavou\BeninBusinessId\Ifu;
+use Egbavou\BeninBusinessId\Internal\ApiexDirectory;
 use Egbavou\BeninBusinessId\Internal\DirectoryException;
 use Egbavou\BeninBusinessId\InvalidIdentifierException;
+use Egbavou\BeninBusinessId\Laravel\BeninBusinessIdServiceProvider;
 use Egbavou\BeninBusinessId\Rccm;
 use Egbavou\BeninBusinessId\RccmChecker;
 use GuzzleHttp\Psr7\HttpFactory;
 use GuzzleHttp\Psr7\Response;
+use Illuminate\Config\Repository;
+use Illuminate\Foundation\Application;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
@@ -35,7 +39,7 @@ final class OracleClient implements ClientInterface
     /** @var list<array<string, string>> */
     public array $requests = [];
 
-    /** @param list<array{throw?: bool, status?: int, body?: string}> $responses */
+    /** @param list<array{throw?: bool, status?: int, headers?: array<string, string>, body?: string}> $responses */
     public function __construct(private array $responses) {}
 
     public function sendRequest(RequestInterface $request): ResponseInterface
@@ -56,7 +60,7 @@ final class OracleClient implements ClientInterface
             throw new InjectedTransportException('Injected transport failure.');
         }
 
-        return new Response($response['status'], [], base64_decode($response['body'], true));
+        return new Response($response['status'], $response['headers'] ?? [], base64_decode($response['body'], true));
     }
 }
 
@@ -109,7 +113,9 @@ function check(array $case): array
         companiesUrl: $case['companies_url'],
         establishmentsUrl: $case['establishments_url'],
     );
+    $before = new DateTimeImmutable('now', new DateTimeZone('UTC'));
     $result = $checker->check($case['input']);
+    $after = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 
     return [
         'status' => $result->status->value,
@@ -127,28 +133,41 @@ function check(array $case): array
         'register' => $result->register?->value,
         'unavailable_reason' => $result->unavailableReason?->value,
         'failure' => failure($result->failure),
+        'checked_at_ok' => $result->checkedAt->getTimezone()->getName() === 'UTC'
+            && $before <= $result->checkedAt && $result->checkedAt <= $after,
         'requests' => $client->requests,
     ];
 }
 
-// The normalization done by the PHP package's Laravel service provider.
-function normalize(mixed $enabled, mixed $timeout, mixed $companiesUrl, mixed $establishmentsUrl): array
+// Resolves RccmChecker through the PHP package's real Laravel service provider, and reports
+// the configuration it was built with. Without $apiex, the package's own config file is read,
+// through Laravel's env() helper.
+function provider(?array $apiex, string $packageDirectory): array
 {
-    $timeout = is_numeric($timeout) && (float) $timeout > 0 ? (float) $timeout : 10.0;
+    $app = new Application($packageDirectory);
+    $app->instance('config', new Repository(
+        $apiex === null ? [] : ['benin-business-id' => ['rccm' => ['apiex' => $apiex]]],
+    ));
+    (new BeninBusinessIdServiceProvider($app))->register();
+
+    $checker = $app->make(RccmChecker::class);
+    $directory = (new ReflectionProperty(RccmChecker::class, 'directory'))->getValue($checker);
+    $read = fn (string $property) => (new ReflectionProperty(ApiexDirectory::class, $property))->getValue($directory);
+    $timeout = $read('httpClient')->getConfig('timeout');
 
     return [
-        'enabled' => filter_var($enabled, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false,
+        'enabled' => $checker->isEnabled(),
         'timeout' => is_infinite($timeout) ? 'INF' : $timeout,
-        'companies_url' => is_string($companiesUrl) && $companiesUrl !== '' ? $companiesUrl : RccmChecker::DEFAULT_COMPANIES_URL,
-        'establishments_url' => is_string($establishmentsUrl) && $establishmentsUrl !== '' ? $establishmentsUrl : RccmChecker::DEFAULT_ESTABLISHMENTS_URL,
+        'companies_url' => $read('companiesUrl'),
+        'establishments_url' => $read('establishmentsUrl'),
     ];
 }
 
-// The package's config file, read through Laravel's env() helper, then normalized.
 function environment(array $variables, string $packageDirectory): array
 {
     foreach (ENV_VARIABLES as $name) {
         unset($_SERVER[$name], $_ENV[$name]);
+        putenv($name);
     }
 
     foreach ($variables as $name => $value) {
@@ -156,9 +175,7 @@ function environment(array $variables, string $packageDirectory): array
         $_ENV[$name] = $value;
     }
 
-    $apiex = (require $packageDirectory.'/config/benin-business-id.php')['rccm']['apiex'];
-
-    return normalize($apiex['enabled'], $apiex['timeout'], $apiex['companies_url'], $apiex['establishments_url']);
+    return provider(null, $packageDirectory);
 }
 
 $results = [];
@@ -168,7 +185,12 @@ foreach (json_decode((string) file_get_contents('php://stdin'), true, 512, JSON_
         'ifu', 'rccm' => identifier($case['op'], $case['input']),
         'check' => check($case),
         'environment' => environment($case['environ'], $packageDirectory),
-        'values' => normalize($case['enabled'], $case['timeout'], $case['companies_url'], $case['establishments_url']),
+        'values' => provider([
+            'enabled' => $case['enabled'],
+            'timeout' => $case['timeout'],
+            'companies_url' => $case['companies_url'],
+            'establishments_url' => $case['establishments_url'],
+        ], $packageDirectory),
     };
 }
 

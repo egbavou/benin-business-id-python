@@ -194,7 +194,7 @@ BENIN_BUSINESS_ID = {
 }
 ```
 
-The shared checker is rebuilt when the setting changes, for example under `override_settings()`. An enabled RCCM checker needs the `httpx` extra.
+The shared checker is replaced when the setting changes, for example under `override_settings()`; a checker created by the integration is closed once the checks still using it are over. An enabled RCCM checker needs the `httpx` extra.
 
 Like the Laravel rules of the PHP package, the form fields leave a value that is blank after PHP's `trim()` (only `" \t\n\r\0\x0b"` are stripped) to `required`. A model `CharField` converts its value to a string before running validators, and a plain `forms.CharField` strips surrounding whitespace with `str.strip()`: use the package's form fields, or call the validators yourself, where the original value matters. Override messages with `error_messages={"unknown_registry": "..."}` on a form field, or with your own catalogue in `LOCALE_PATHS`.
 
@@ -225,6 +225,7 @@ Validation errors have one type per reason (`ifu_invalid_year`, `rccm_unknown_re
 - `creation_date` is a `datetime.date` rather than a `DateTimeImmutable` at midnight UTC; a year-0000 date, which `datetime.date` cannot hold, is `None`.
 - `TaxpayerType` members have string values, and failures are reported through Python exceptions in `failure`.
 - Timeouts apply per operation (see above); a body cut off by the network is `TRANSPORT`, as with Guzzle.
+- With an injected client, a redirect whose `Location` header is malformed is `TRANSPORT` rather than `HTTP_STATUS`: httpx parses that header even when it does not follow redirects. The client a checker creates itself drops the header and matches PHP.
 - A float found in an APIEx text field is converted like PHP's `(string)` with the default precision of 14, except for rare exact ties at the 15th significant digit.
 
 ## Development
@@ -243,7 +244,7 @@ uv run pytest -m parity                            # compares results with the P
 BENIN_BUSINESS_ID_LIVE=1 uv run pytest -m live     # queries the real APIEx directory
 ```
 
-The parity tests run thousands of generated identifiers, APIEx responses and configurations through both packages and compare every result. They need `php` and the PHP package installed with its development dependencies in `../benin-business-id`, or in `BENIN_BUSINESS_ID_PHP_DIR`. Live tests are skipped unless `BENIN_BUSINESS_ID_LIVE=1`, even when selected; they never run in CI.
+The parity tests run thousands of generated identifiers, APIEx responses (through both the sync and the async checker) and configurations (through the PHP package's real Laravel service provider) through both packages, and compare the results field by field. They need `php` and the PHP package installed with its development dependencies in `../benin-business-id`, or in `BENIN_BUSINESS_ID_PHP_DIR`. Live tests are skipped unless `BENIN_BUSINESS_ID_LIVE=1`, even when selected; they never run in CI.
 
 ## Licence
 

@@ -13,12 +13,15 @@ The RCCM checker is configured by the optional BENIN_BUSINESS_ID setting:
     }
 
 A missing or None key falls back to the BENIN_RCCM_APIEX_* environment variables. Values are
-normalized like the PHP service provider. The shared checker is rebuilt when the setting
-changes, for example under override_settings().
+normalized like the PHP service provider. The shared checker is replaced when the setting
+changes, for example under override_settings(). A replaced checker that the integration
+created is closed once the checks still using it are over.
 """
 
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Final
 
 from django.conf import settings
@@ -30,10 +33,21 @@ from benin_business_id._settings import normalize
 
 SETTING: Final = "BENIN_BUSINESS_ID"
 
+
+@dataclass
+class _Shared:
+    checker: RccmChecker
+    owned: bool
+    users: int = 0
+    retired: bool = False
+
+    def closable(self) -> bool:
+        return self.owned and self.retired and self.users == 0
+
+
 _lock = threading.Lock()
 _ifu_checker: Final = IfuChecker()
-_rccm_checker: RccmChecker | None = None
-_owns_rccm_checker = False
+_rccm: _Shared | None = None
 
 
 def get_ifu_checker() -> IfuChecker:
@@ -41,25 +55,59 @@ def get_ifu_checker() -> IfuChecker:
 
 
 def get_rccm_checker() -> RccmChecker:
-    global _rccm_checker, _owns_rccm_checker
+    """The shared RCCM checker.
 
+    It may be closed when the setting changes; the existence validators use
+    borrowed_rccm_checker() instead, which keeps it open while they use it.
+    """
     with _lock:
-        if _rccm_checker is None:
-            _rccm_checker, _owns_rccm_checker = _build_rccm_checker()
+        return _current().checker
 
-        return _rccm_checker
+
+@contextmanager
+def borrowed_rccm_checker() -> Iterator[RccmChecker]:
+    """The shared RCCM checker, kept open until the block ends even if the setting changes."""
+    with _lock:
+        shared = _current()
+        shared.users += 1
+
+    try:
+        yield shared.checker
+    finally:
+        with _lock:
+            shared.users -= 1
+            closable = shared.closable()
+
+        if closable:
+            shared.checker.close()
 
 
 def reset_checkers() -> None:
-    """Forget the shared RCCM checker, closing it when the integration created it."""
-    global _rccm_checker, _owns_rccm_checker
+    """Retire the shared RCCM checker; it is closed now or when its last check ends."""
+    global _rccm
 
     with _lock:
-        if _rccm_checker is not None and _owns_rccm_checker:
-            _rccm_checker.close()
+        shared, _rccm = _rccm, None
 
-        _rccm_checker = None
-        _owns_rccm_checker = False
+        if shared is None:
+            return
+
+        shared.retired = True
+        closable = shared.closable()
+
+    if closable:
+        shared.checker.close()
+
+
+def _current() -> _Shared:
+    """Return the shared checker, building it if needed. The caller holds the lock."""
+    global _rccm
+
+    if _rccm is None:
+        checker, owned = _build_rccm_checker()
+        _rccm = _Shared(checker, owned)
+
+    return _rccm
 
 
 def _build_rccm_checker() -> tuple[RccmChecker, bool]:

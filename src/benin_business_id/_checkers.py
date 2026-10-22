@@ -161,7 +161,10 @@ class RccmChecker(_RccmCheckerBase):
         self._owns_client = False
 
         if client is None and enabled:
-            self._client = _httpx().Client(timeout=self._client_timeout())
+            self._client = _httpx().Client(
+                timeout=self._client_timeout(),
+                event_hooks={"response": [_drop_redirect_location]},
+            )
             self._owns_client = True
 
     @classmethod
@@ -257,7 +260,10 @@ class AsyncRccmChecker(_RccmCheckerBase):
         self._owns_client = False
 
         if client is None and enabled:
-            self._client = _httpx().AsyncClient(timeout=self._client_timeout())
+            self._client = _httpx().AsyncClient(
+                timeout=self._client_timeout(),
+                event_hooks={"response": [_drop_redirect_location_async]},
+            )
             self._owns_client = True
 
     @classmethod
@@ -330,6 +336,17 @@ class AsyncRccmChecker(_RccmCheckerBase):
             raise DirectoryError(UnavailableReason.TRANSPORT) from error
 
         return _apiex.read_page(response.status_code, response.content, rccm)
+
+
+def _drop_redirect_location(response: "httpx.Response") -> None:
+    # The checker never follows redirects, yet httpx parses the Location header of a redirect
+    # and raises on a malformed one. Dropping it on the client the checker owns keeps every
+    # redirect an HTTP_STATUS failure, as with Guzzle's sendRequest().
+    response.headers.pop("Location", None)
+
+
+async def _drop_redirect_location_async(response: "httpx.Response") -> None:
+    _drop_redirect_location(response)
 
 
 def _httpx() -> ModuleType:

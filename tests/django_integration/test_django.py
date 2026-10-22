@@ -1,6 +1,7 @@
 """Port of the PHP Laravel tests (RulesTest, ServiceProviderTest) to the Django integration."""
 
 import gettext
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -13,11 +14,11 @@ from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.test import override_settings
 from django.utils import translation
 from tests import cases
-from tests.httpx_integration.support import FakeApiex, page
+from tests.httpx_integration.support import FakeApiex, page, route_owned_clients
 
 from benin_business_id import FailureReason, Ifu, Rccm, RccmChecker
 from benin_business_id.django._messages import IFU_MESSAGES, RCCM_MESSAGES
-from benin_business_id.django.checkers import get_ifu_checker, get_rccm_checker
+from benin_business_id.django.checkers import get_ifu_checker, get_rccm_checker, reset_checkers
 from benin_business_id.django.forms import IfuField, RccmField
 from benin_business_id.django.validators import (
     IfuExistsValidator,
@@ -446,3 +447,61 @@ def test_the_compiled_catalog_matches_the_po_file_and_covers_every_message() -> 
 
         for key, message in messages.items():
             assert entries[str(message)] == FRENCH[identifier][key]
+
+
+def test_a_settings_change_waits_for_running_checks_before_closing_the_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started, release = threading.Event(), threading.Event()
+
+    class BlockingApiex(FakeApiex):
+        def handler(self, request: httpx.Request) -> httpx.Response:
+            if not self.requests:
+                started.set()
+                release.wait(timeout=10)
+
+            return super().handler(request)
+
+    fake = BlockingApiex([page() for _ in range(4)])
+    route_owned_clients(monkeypatch, fake)
+    outcome: list[str | None] = []
+
+    def validate() -> None:
+        try:
+            RccmExistsValidator()("RB/COT/18 B 22272")
+            outcome.append(None)
+        except ValidationError as error:
+            outcome.append(error.code)
+
+    with override_settings(BENIN_BUSINESS_ID={"RCCM_APIEX": {"ENABLED": True}}):
+        checker = get_rccm_checker()
+        client = checker._client
+        assert client is not None
+
+        thread = threading.Thread(target=validate)
+        thread.start()
+        assert started.wait(timeout=10)
+
+        reset_checkers()
+
+        assert not client.is_closed
+        release.set()
+        thread.join(timeout=10)
+
+    assert outcome == ["not_found"]
+    assert len(fake.requests) == 4
+    assert client.is_closed
+
+
+def test_form_fields_ignore_methods_overridden_by_a_str_subclass() -> None:
+    class Blank(str):
+        def strip(self, *args: object) -> str:
+            return ""
+
+    field = IfuField(required=False)
+
+    with pytest.raises(ValidationError) as caught:
+        field.clean(Blank("not an IFU"))
+
+    assert caught.value.code == "invalid_characters"
+    assert field.clean(Blank(" 3202444139959 ")) == Ifu("3202444139959")

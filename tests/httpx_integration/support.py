@@ -92,3 +92,20 @@ def make_check(mode: str) -> Check:
 
 MODES = ["sync", "async"]
 Factory = Callable[[str], Check]
+
+
+_REAL_CLIENT = httpx.Client
+_REAL_ASYNC_CLIENT = httpx.AsyncClient
+
+
+def route_owned_clients(monkeypatch: Any, fake: FakeApiex) -> None:
+    """Make the clients that checkers create themselves talk to the fake directory."""
+
+    def client(**options: Any) -> httpx.Client:
+        return _REAL_CLIENT(transport=httpx.MockTransport(fake.handler), **options)
+
+    def async_client(**options: Any) -> httpx.AsyncClient:
+        return _REAL_ASYNC_CLIENT(transport=httpx.MockTransport(fake.handler), **options)
+
+    monkeypatch.setattr(httpx, "Client", client)
+    monkeypatch.setattr(httpx, "AsyncClient", async_client)

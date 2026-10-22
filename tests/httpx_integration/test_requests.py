@@ -7,7 +7,12 @@ from urllib.parse import parse_qs, quote
 from tests.httpx_integration.support import Check, FakeApiex, page
 
 from benin_business_id import Rccm, RccmRegister
-from benin_business_id._apiex import USER_AGENT, request_url
+from benin_business_id._apiex import request_url
+
+# Written out rather than read from the package (decision P1 of the design).
+USER_AGENT = (
+    "egbavou/benin-business-id-python (+https://github.com/egbavou/benin-business-id-python)"
+)
 
 
 def query(fake: FakeApiex, index: int) -> dict[str, list[str]]:

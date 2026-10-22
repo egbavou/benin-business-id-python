@@ -357,9 +357,19 @@ def response(rng: random.Random, rccm: Rccm | None) -> dict[str, object]:
     if rng.random() < 0.03:
         return {"throw": True}
 
-    status = 200 if rng.random() < 0.9 else rng.choice([201, 204, 301, 302, 400, 404, 500, 503])
+    status = 200 if rng.random() < 0.9 else rng.choice([201, 204, 301, 302, 307, 400, 404, 503])
+    headers = {}
 
-    return {"status": status, "body": base64.b64encode(body(rng, rccm)).decode()}
+    if status in (301, 302, 307) and rng.random() < 0.8:
+        headers["Location"] = rng.choice(
+            ["https://example.test/moved", "/relative", "http://example.com:bad/", ""]
+        )
+
+    return {
+        "status": status,
+        "headers": headers,
+        "body": base64.b64encode(body(rng, rccm)).decode(),
+    }
 
 
 def clean_page(rng: random.Random, rccm: Rccm | None) -> dict[str, object]:

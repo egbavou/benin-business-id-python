@@ -12,7 +12,6 @@ from benin_business_id import (
     TaxpayerType,
     UnavailableReason,
 )
-from benin_business_id._cleanup import PCRE_SPACE_CODE_POINTS
 
 
 def members(
@@ -115,7 +114,23 @@ def test_directory_errors_use_the_php_default_messages(
 
 def test_removes_exactly_the_pcre_spaces_dots_and_hyphens() -> None:
     # PHP's preg_replace('/[\s.\-]+/u', '') removes exactly these 28 code points (PHP 8.5).
-    expected = {*PCRE_SPACE_CODE_POINTS, ord("."), ord("-")}
+    # The list is written out rather than read from the package, so that it checks the code.
+    expected = {
+        *range(0x09, 0x0E),
+        0x20,
+        0x2D,
+        0x2E,
+        0x85,
+        0xA0,
+        0x1680,
+        0x180E,
+        *range(0x2000, 0x200B),
+        0x2028,
+        0x2029,
+        0x202F,
+        0x205F,
+        0x3000,
+    }
 
     assert len(expected) == 28
     assert {0x1C, 0x1D, 0x1E, 0x1F, 0x200B, 0xFEFF}.isdisjoint(expected)

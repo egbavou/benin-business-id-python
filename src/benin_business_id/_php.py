@@ -27,8 +27,11 @@ class JsonDecodeError(ValueError):
 
 
 def trim(value: str) -> str:
-    """trim() with its default character list."""
-    return value.strip(_TRIM_CHARACTERS)
+    """trim() with its default character list.
+
+    str.strip is called on the str type, so that a str subclass cannot override it.
+    """
+    return str.strip(value, _TRIM_CHARACTERS)
 
 
 def float_to_string(value: float) -> str:

@@ -7,12 +7,13 @@ from collections.abc import AsyncIterator, Iterator
 
 import httpx
 import pytest
-from tests.httpx_integration.support import FakeApiex, page
+from tests.httpx_integration.support import FakeApiex, page, route_owned_clients
 
 from benin_business_id import (
     ApiexSettings,
     AsyncRccmChecker,
     CheckStatus,
+    DirectoryError,
     RccmChecker,
     RccmCheckResult,
     UnavailableReason,
@@ -170,3 +171,44 @@ def test_a_body_cut_off_by_the_network_is_a_transport_failure(mode: str) -> None
     assert result.status is CheckStatus.UNAVAILABLE
     assert result.unavailable_reason is UnavailableReason.TRANSPORT
     assert isinstance(result.failure, httpx.ReadError)
+
+
+def malformed_redirect() -> httpx.Response:
+    return httpx.Response(301, headers={"Location": "http://example.com:bad/"})
+
+
+@pytest.mark.parametrize("mode", ["sync", "async"])
+def test_a_malformed_redirect_is_an_http_status_failure_with_an_owned_client(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    fake = FakeApiex([malformed_redirect()])
+    route_owned_clients(monkeypatch, fake)
+
+    if mode == "sync":
+        with RccmChecker(enabled=True) as checker:
+            result = checker.check("RB/COT/18 B 22272")
+    else:
+
+        async def run() -> RccmCheckResult:
+            async with AsyncRccmChecker(enabled=True) as checker:
+                return await checker.check("RB/COT/18 B 22272")
+
+        result = asyncio.run(run())
+
+    assert result.status is CheckStatus.UNAVAILABLE
+    assert result.unavailable_reason is UnavailableReason.HTTP_STATUS
+    assert isinstance(result.failure, DirectoryError)
+    assert str(result.failure) == "APIEx returned HTTP 301."
+    assert len(fake.requests) == 1
+
+
+def test_an_injected_client_still_parses_a_malformed_redirect() -> None:
+    # Documented difference (design, section 12.1): the checker does not alter an injected
+    # client, and httpx raises while it parses the Location header.
+    fake = FakeApiex([malformed_redirect()])
+
+    with fake.client() as client:
+        result = RccmChecker(client, enabled=True).check("RB/COT/18 B 22272")
+
+    assert result.unavailable_reason is UnavailableReason.TRANSPORT
+    assert isinstance(result.failure, httpx.RemoteProtocolError)

@@ -6,7 +6,7 @@ from django.utils.deconstruct import deconstructible
 
 from benin_business_id import CheckStatus, FailureReason, Ifu, InvalidIdentifierError, Rccm
 from benin_business_id.django._messages import IFU_MESSAGES, RCCM_MESSAGES
-from benin_business_id.django.checkers import get_ifu_checker, get_rccm_checker
+from benin_business_id.django.checkers import borrowed_rccm_checker, get_ifu_checker
 
 if TYPE_CHECKING:
     # Typing-only base that declares the deconstruct() method added by @deconstructible.
@@ -124,6 +124,5 @@ class RccmExistsValidator(_ExistsValidator):
         if not isinstance(identifier, Rccm):
             raise TypeError("RccmExistsValidator checks RCCM numbers only")
 
-        checker = get_rccm_checker()
-
-        return checker.check(identifier).status, checker.enabled
+        with borrowed_rccm_checker() as checker:
+            return checker.check(identifier).status, checker.enabled

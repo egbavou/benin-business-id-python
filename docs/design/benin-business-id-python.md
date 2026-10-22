@@ -708,7 +708,7 @@ C'est l'équivalent des singletons du service provider.
   - Une clé absente, ou valant `None`, prend la valeur lue par `ApiexSettings.from_env()`.
   - Les valeurs présentes passent par la normalisation du §8.2.
   - `RCCM_CHECKER`, s'il est fourni et non nul, est utilisé tel quel. C'est l'équivalent du `$this->app->instance(RccmChecker::class, …)` du README PHP. Le package ne le ferme jamais.
-- **Renouvellement.** Quand le réglage change (signal `setting_changed`, donc aussi `override_settings` dans les tests), l'instance partagée est oubliée. Si c'est le package qui l'avait créée, son client est d'abord fermé.
+- **Renouvellement.** Quand le réglage change (signal `setting_changed`, donc aussi `override_settings` dans les tests), l'instance partagée est remplacée. Si c'est le package qui l'avait créée, son client est fermé une fois terminées les vérifications qui l'utilisent encore : les validateurs l'empruntent par `borrowed_rccm_checker()`, qui compte les utilisations (revue Codex du code).
 
 ### 11.6 Portée de la parité avec Laravel
 
@@ -731,6 +731,7 @@ Elle vaut pour l'appel direct des validateurs et pour les champs de formulaire d
 | Messages Django : « Ce champ … » au lieu de « Le champ :attribute … ». | §14 |
 | Une entrée qui n'est pas un `str` lève `TypeError`, comme un appel PHP en `strict_types`. Un appel PHP non strict convertirait un entier en chaîne. | P6, alignement France |
 | Un client injecté n'applique pas ses en-têtes, paramètres et cookies par défaut. Guzzle, lui, applique ses en-têtes par défaut s'ils manquent, et son option `query` remplace la requête. | P14 |
+| Avec un client **injecté**, une redirection dont l'en-tête `Location` est mal formé donne `TRANSPORT` (`httpx.RemoteProtocolError`) au lieu de `HTTP_STATUS` : httpx analyse cet en-tête même sans suivre la redirection, et le package ne modifie pas un client injecté. Le client que le package crée lui-même retire `Location` par un hook de réponse et garde la parité exacte. | Revue Codex du code, 22/10/2026 |
 | Le délai httpx porte sur chaque opération : sans échéance totale, un serveur qui envoie un fragment avant chaque expiration peut prolonger une requête indéfiniment. Le `timeout` de Guzzle borne la requête entière. | P16 |
 | Une coupure en cours de réponse donne `TRANSPORT`. Avec un client PSR-18 qui lirait le corps à la demande, le PHP donnerait `SCHEMA` ; avec Guzzle, il donne aussi `TRANSPORT`. | P15 |
 | La conversion des flottants suit la précision PHP par défaut (`precision=14`). Une autre valeur dans le `php.ini` changerait le PHP, pas le Python. | §9.5 |
@@ -779,7 +780,8 @@ Elle vaut pour l'appel direct des validateurs et pour les champs de formulaire d
 
 **Oracle.** `tests/parity/oracle.php` :
 - charge `vendor/autoload.php` du package PHP, dont le dossier est donné par `BENIN_BUSINESS_ID_PHP_DIR` (par défaut `../benin-business-id`) ;
-- lit des requêtes JSON sur l'entrée standard et renvoie ses résultats en JSON.
+- lit des requêtes JSON sur l'entrée standard et renvoie ses résultats en JSON ;
+- reçoit un environnement sans les variables `BENIN_RCCM_APIEX_*` du développeur, et les retire aussi de `getenv()` avant chaque cas.
 
 **Opérations :**
 
@@ -787,7 +789,7 @@ Elle vaut pour l'appel direct des validateurs et pour les champs de formulaire d
 |---|---|
 | `ifu`, `rccm` | `from()` sur la chaîne reçue |
 | `check` | `RccmChecker` avec un faux client PSR-18. Le client renvoie des réponses dont le statut et le corps **bruts en base64** sont fournis, ou lève une exception désignée. Le résultat comprend les requêtes envoyées. |
-| `settings` | La lecture `env()` de Laravel suivie de la normalisation du provider, sur un jeu de variables donné. |
+| `environment`, `values` | Le **vrai** `BeninBusinessIdServiceProvider`, résolu dans une application Laravel, à partir d'un jeu de variables d'environnement (lu par le fichier de config et `env()`) ou de valeurs de config typées. La configuration du `RccmChecker` obtenu est lue par réflexion. |
 
 **Projection canonique comparée :**
 - **Identifiant** : succès ou raison ; `value` et sous-parties.
@@ -800,8 +802,10 @@ Elle vaut pour l'appel direct des validateurs et pour les champs de formulaire d
   - `User-Agent` comparé modulo l'écart P1.
 - **Configuration** : `enabled`, `timeout`, les deux URL.
 
-**Ce qui n'est pas comparé :**
-- `checked_at` : chaque langage vérifie seulement que la valeur est en UTC et comprise entre les instants d'avant et d'après l'appel ;
+**Côté Python**, chaque vérification passe deux fois, par `RccmChecker` puis par `AsyncRccmChecker`, avec le client que le vérificateur crée lui-même (routé vers un transport factice). La nature de `failure` est déduite de l'exception elle-même, jamais de la cause.
+
+**Ce qui n'est pas comparé tel quel :**
+- `checked_at` : chaque langage vérifie que la valeur est en UTC et comprise entre les instants d'avant et d'après l'appel, et c'est ce booléen qui est comparé ;
 - l'année courante est lue des deux côtés, et le test s'interrompt si elle change pendant l'exécution.
 
 **Entrées générées** avec une graine fixe :
