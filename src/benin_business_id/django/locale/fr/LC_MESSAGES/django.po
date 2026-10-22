@@ -1,0 +1,64 @@
+# French translations for benin-business-id.
+# Texts taken from the French messages of the PHP package's Laravel rules.
+msgid ""
+msgstr ""
+"Project-Id-Version: benin-business-id\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "This field must contain only digits."
+msgstr "Ce champ ne doit contenir que des chiffres."
+
+msgid "This field must contain 13 digits."
+msgstr "Ce champ doit contenir 13 chiffres."
+
+msgid "This field is not a valid IFU."
+msgstr "Ce champ n'est pas un IFU valide."
+
+msgid "This field must start with a digit from 0 to 6."
+msgstr "Ce champ doit commencer par un chiffre de 0 à 6."
+
+msgid "This field contains an invalid registration year."
+msgstr "Ce champ contient une année d'immatriculation invalide."
+
+msgid "The IFU specified could not be found."
+msgstr "L'IFU indiqué est introuvable."
+
+msgid "The IFU specified cannot be verified at the moment."
+msgstr "L'IFU indiqué ne peut pas être vérifié pour le moment."
+
+msgid "This field contains unauthorised characters."
+msgstr "Ce champ contient des caractères non autorisés."
+
+msgid "This field does not have the length of an RCCM number."
+msgstr "Ce champ n'a pas la longueur d'un numéro RCCM."
+
+msgid "This field is not a valid RCCM number."
+msgstr "Ce champ n'est pas un numéro RCCM valide."
+
+msgid "This field must have the form RB/COT/18 B 22272."
+msgstr "Ce champ doit avoir la forme RB/COT/18 B 22272."
+
+msgid "This field must start with RB."
+msgstr "Ce champ doit commencer par RB."
+
+msgid "This field indicates an unknown registry."
+msgstr "Ce champ indique un greffe inconnu."
+
+msgid "This field must have a category letter from A to E."
+msgstr "Ce champ doit porter une lettre de catégorie de A à E."
+
+msgid "This field contains an invalid year."
+msgstr "Ce champ contient une année invalide."
+
+msgid "The RCCM number specified is absent from the APIEx directory."
+msgstr "Le numéro RCCM indiqué est absent de l'annuaire de l'APIEx."
+
+msgid "The RCCM number specified cannot be verified at the moment."
+msgstr "Le numéro RCCM indiqué ne peut pas être vérifié pour le moment."
+
+msgid "Online verification of RCCM numbers is disabled."
+msgstr "La vérification en ligne des numéros RCCM est désactivée."

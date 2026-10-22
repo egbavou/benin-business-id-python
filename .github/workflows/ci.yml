@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Live APIEx tests never run in CI; the parity tests need the PHP package and are not run either.
+  BENIN_BUSINESS_ID_LIVE: '0'
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13', '3.14', '3.15']
+    name: Core / Python ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --no-default-groups --group test
+      - run: uv pip list
+      - name: Check that no optional package is installed
+        run: uv run --no-sync python -c "import importlib.util as u; assert all(u.find_spec(name) is None for name in ('httpx', 'django', 'pydantic'))"
+      - run: uv run --no-sync pytest tests/core
+
+  httpx:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13', '3.14', '3.15']
+    name: httpx / Python ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --no-default-groups --group test --extra httpx
+      - run: uv pip list
+      - run: uv run --no-sync pytest tests/core tests/httpx_integration
+
+  django:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { django: '5.2', python: '3.11' }
+          - { django: '5.2', python: '3.14' }
+          - { django: '6.0', python: '3.12' }
+          - { django: '6.0', python: '3.14' }
+          - { django: '6.1', python: '3.12' }
+          - { django: '6.1', python: '3.14' }
+    name: Django ${{ matrix.django }} / Python ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --no-default-groups --group test --extra django --extra httpx
+      - run: uv pip install "django~=${{ matrix.django }}.0"
+      - run: uv pip list
+      - run: uv run --no-sync pytest tests/core tests/django_integration
+
+  pydantic:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13', '3.14', '3.15']
+    name: Pydantic / Python ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --no-default-groups --group test --extra pydantic
+      - run: uv pip list
+      - run: uv run --no-sync pytest tests/core tests/pydantic_integration
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: '3.14'
+      - run: uv sync --all-extras
+      - run: uv pip list
+      - run: uv run --no-sync ruff check
+      - run: uv run --no-sync ruff format --check
+      - run: uv run --no-sync mypy
+      - name: Build the sdist, then the wheel from the sdist
+        run: uv build
+      - name: Check the wheel contents
+        run: |
+          uv run --no-sync python - <<'EOF'
+          import glob
+          import zipfile
+
+          (wheel,) = glob.glob("dist/*.whl")
+          names = set(zipfile.ZipFile(wheel).namelist())
+          for required in (
+              "benin_business_id/py.typed",
+              "benin_business_id/django/locale/fr/LC_MESSAGES/django.po",
+              "benin_business_id/django/locale/fr/LC_MESSAGES/django.mo",
+          ):
+              assert required in names, f"{required} is missing from {wheel}"
+          EOF
+      - name: Smoke-test the installed wheel outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          uv venv smoke
+          uv pip install --python smoke "$GITHUB_WORKSPACE"/dist/*.whl "Django>=5.2"
+          smoke/bin/python - <<'EOF'
+          import django
+          from django.conf import settings
+
+          settings.configure(INSTALLED_APPS=["benin_business_id.django"], USE_I18N=True)
+          django.setup()
+
+          import os
+
+          from django.core.exceptions import ValidationError
+          from django.utils import translation
+
+          import benin_business_id
+          from benin_business_id import Rccm
+          from benin_business_id.django.validators import RccmValidator
+
+          assert not benin_business_id.__file__.startswith(os.environ["GITHUB_WORKSPACE"])
+          assert Rccm("RB/COT/07-B-1432").value == "RB/COT/07 B 1432"
+
+          try:
+              RccmValidator()("RB/OUI/22 B 12")
+          except ValidationError as error:
+              with translation.override("en"):
+                  english = error.messages
+              with translation.override("fr"):
+                  french = error.messages
+          assert english != french, "the French catalogue was not loaded"
+          print(english, french)
+          EOF
+
+  lowest:
+    runs-on: ubuntu-latest
+    name: Python 3.11 / lowest direct dependencies
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: '3.11'
+      - run: uv sync --resolution lowest-direct --all-extras --no-default-groups --group test
+      - run: uv pip list
+      - run: uv run --no-sync pytest

@@ -1,0 +1,96 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benin-business-id"
+version = "0.1.0"
+description = "Offline Beninese IFU and RCCM validation with optional APIEx directory checks, and Django and Pydantic integrations."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Egbavou" }]
+keywords = ["benin", "ifu", "rccm", "ohada", "apiex", "validation", "django", "pydantic", "business-id"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.0",
+    "Framework :: Django :: 6.1",
+    "Framework :: Pydantic",
+    "Framework :: Pydantic :: 2",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Natural Language :: French",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+httpx = ["httpx>=0.27"]
+django = ["Django>=5.2"]
+pydantic = ["pydantic>=2.0.1,<3"]
+
+[dependency-groups]
+test = ["pytest>=8.3", "babel>=2.16"]
+typing = ["mypy>=1.18", "django-stubs>=5.2"]
+lint = ["ruff>=0.11"]
+
+[tool.uv]
+default-groups = ["test", "typing", "lint"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/benin_business_id"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/docs", "/.github"]
+
+[tool.pytest.ini_options]
+minversion = "8.3"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = [
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "-m",
+    "not live and not parity",
+]
+markers = [
+    "live: queries the real APIEx directory; also requires BENIN_BUSINESS_ID_LIVE=1",
+    "parity: compares results with the PHP package; requires php and the PHP checkout",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+mypy_path = "src"
+explicit_package_bases = true
+python_version = "3.11"
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["babel.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py311"
+src = ["src", "tests"]
+line-length = 100
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "PT", "RUF", "RET"]
