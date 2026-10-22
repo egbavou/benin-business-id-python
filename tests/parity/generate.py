@@ -9,14 +9,16 @@ from decimal import Decimal
 from tests import cases
 
 from benin_business_id import Rccm
-from benin_business_id._cleanup import PCRE_SPACE_CODE_POINTS
+from benin_business_id._cleanup import SEPARATOR_CODE_POINTS
 from benin_business_id._clock import current_year
 
 ACTIVE = ["COT", "ABC", "PNO", "PKO", "ABY", "LKS", "NAT", "DGO", "KDI", "APL", "SVL"]
 FORMER = ["PN", "PK", "ODH", "POB", "ALD"]
-SPACES = [chr(code_point) for code_point in PCRE_SPACE_CODE_POINTS]
+SPACES = [chr(code_point) for code_point in SEPARATOR_CODE_POINTS]
 # Characters that look like separators but are not removed, in PHP or in Python.
-NEAR_SPACES = [chr(code_point) for code_point in (0x1C, 0x1F, 0x200B, 0xFEFF, 0x2010, 0x00AD)]
+NEAR_SPACES = [
+    chr(code_point) for code_point in (0x1C, 0x1F, 0x180E, 0x200B, 0xFEFF, 0x2010, 0x00AD)
+]
 OTHER = ["/", ":", "(", ")", "°", "é", "A", "b", "\0", chr(0xFF13), chr(0x0131), chr(0x017F)]
 
 

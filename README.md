@@ -48,7 +48,7 @@ The constructor validates and normalizes its input, and raises `InvalidIdentifie
 
 The rule declared by the State, checked in this order:
 
-1. Spaces, dots and hyphens are removed. The space set is exactly what PHP's `\s` matches with the `u` modifier: U+0009 to U+000D, U+0020, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000. Unlike `str.isspace()`, it excludes U+001C to U+001F. Prefixes such as `IFU :` or `BJ-IFU-` are not removed.
+1. Separators, dots and hyphens are removed, like the PHP package's pattern `/[\p{Z}\x{0009}-\x{000D}\x{0085}.\-]+/u`. The separators are U+0009 to U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000. Unlike `str.isspace()`, they exclude U+001C to U+001F; U+180E and U+200B are not separators either and are rejected. Prefixes such as `IFU :` or `BJ-IFU-` are not removed.
 2. Only ASCII digits remain (`invalid_characters`), 13 of them (`invalid_length`).
 3. The first digit is the taxpayer type, 0 to 6 (`unknown_taxpayer_type`): `INDIVIDUAL` (0, 1 or 2), `COMPANY` (3), `PUBLIC_ENTITY` (4), `INTERNATIONAL_ORGANIZATION` (5) and `NGO` (6).
 4. Digits 2 to 5 are the registration year, from 2006 through the current UTC year (`invalid_year`).
@@ -59,7 +59,7 @@ The last digit is a check digit whose algorithm has never been published: it is 
 
 The strict rule drawn from the official register:
 
-1. Spaces (same set as above), dots and hyphens are removed and ASCII letters are uppercased; `/` is kept. Anything other than `A-Z`, `0-9` and `/` fails (`invalid_characters`); prefixes such as `RCCM :` and annotations such as `(Ancien n° …)` are therefore rejected.
+1. Separators (same set as above), dots and hyphens are removed and ASCII letters are uppercased; `/` is kept. Anything other than `A-Z`, `0-9` and `/` fails (`invalid_characters`); prefixes such as `RCCM :` and annotations such as `(Ancien n° …)` are therefore rejected.
 2. The structure is country, registry, year, category letter and sequence number (`invalid_structure`), with at most 6 sequence digits (`invalid_length`).
 3. The country is `RB` (`invalid_country`).
 4. The registry is one of `COT`, `ABC`, `PNO`, `PKO`, `ABY`, `LKS`, `NAT`, `DGO`, `KDI`, `APL` and `SVL`, or one of the former codes `PN`, `PK`, `ODH`, `POB` and `ALD` for numbers through 2020 (`unknown_registry`).

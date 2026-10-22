@@ -112,9 +112,10 @@ def test_directory_errors_use_the_php_default_messages(
     assert str(clone) == "APIEx returned HTTP 503."
 
 
-def test_removes_exactly_the_pcre_spaces_dots_and_hyphens() -> None:
-    # PHP's preg_replace('/[\s.\-]+/u', '') removes exactly these 28 code points (PHP 8.5).
-    # The list is written out rather than read from the package, so that it checks the code.
+def test_removes_exactly_the_shared_separators_dots_and_hyphens() -> None:
+    # PHP's preg_replace('/[\p{Z}\x{0009}-\x{000D}\x{0085}.\-]+/u', '') removes exactly these
+    # 27 code points (PHP 8.5, PCRE2 10.47, decision D37). The list is written out rather than
+    # read from the package, so that it checks the code.
     expected = {
         *range(0x09, 0x0E),
         0x20,
@@ -123,7 +124,6 @@ def test_removes_exactly_the_pcre_spaces_dots_and_hyphens() -> None:
         0x85,
         0xA0,
         0x1680,
-        0x180E,
         *range(0x2000, 0x200B),
         0x2028,
         0x2029,
@@ -132,8 +132,8 @@ def test_removes_exactly_the_pcre_spaces_dots_and_hyphens() -> None:
         0x3000,
     }
 
-    assert len(expected) == 28
-    assert {0x1C, 0x1D, 0x1E, 0x1F, 0x200B, 0xFEFF}.isdisjoint(expected)
+    assert len(expected) == 27
+    assert {0x1C, 0x1D, 0x1E, 0x1F, 0x180E, 0x200B, 0xFEFF}.isdisjoint(expected)
 
     for code_point in range(0x110000):
         accepted = Ifu.is_valid(f"32024{chr(code_point)}44139959")

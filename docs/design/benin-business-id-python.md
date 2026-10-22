@@ -71,6 +71,7 @@ Identique au PHP.
 | P15 | Lecture du corps | httpx lit tout le corps dans `send()`, comme Guzzle dans `sendRequest()`. Une coupure en cours de réponse donne donc `TRANSPORT`, comme le PHP déployé avec Guzzle. Codex proposait de lire le corps après le contrôle du statut, ce qui aurait donné `SCHEMA`. |
 | P16 | Délai | Le délai httpx porte sur chaque opération (connexion, chaque lecture, écriture, pool) et non sur la requête entière. C'est documenté ; aucune échéance totale n'est codée. |
 | P17 | Alignement sur `france-business-id` (Python) | Trois points repris de la conception France (`../france-business-id-python/docs/plans/2026-10-22-design.md`) :<br>- **Django** : classes `IfuValidator` et `RccmValidator`, champs de formulaire `IfuField` et `RccmField` qui rendent l'objet (§11) ;<br>- **Pydantic** : module `benin_business_id.pydantic`, alias `PydanticIfu` et `PydanticRccm`, erreurs `ifu_<raison>` et `rccm_<raison>` (§10) ;<br>- **Build** : `hatchling`, qui remplace `uv_build` (P3). |
+| P18 | Nettoyage des séparateurs (D37) | Reprise de la décision D37 du package PHP, commitée en PHP (`418266e`) : le nettoyage suit l'expression commune `/[\p{Z}\x{0009}-\x{000D}\x{0085}.\-]+/u`. U+180E et U+200B donnent `INVALID_CHARACTERS`. Le motif de l'ancien numéro garde l'ensemble `\s` de PCRE, comme le PHP. Accord de l'utilisateur, application après le commit PHP (§7.1). |
 
 **Alignement avec `france-business-id` (Python).** Les deux ports partagent désormais :
 - les choix P1 à P4 (outillage, avec `hatchling`), P6 et P9 ;
@@ -316,17 +317,20 @@ Les algorithmes et l'ordre des contrôles sont ceux de la spec PHP (§5 pour l'I
 
 ### 7.1 Nettoyage commun (`_cleanup.py`)
 
-- Le PHP retire `/[\s.\-]+/u`. Avec `/u`, le `\s` de PCRE2 correspond exactement à `\h` et `\v`, ce que confirme un test sur PHP 8.5 :
-  - tabulation, saut de ligne, U+000B, U+000C, retour chariot, espace ;
-  - U+0085, U+00A0, U+1680, **U+180E**, U+2000 à U+200A, U+2028, U+2029, U+202F, U+205F, U+3000.
-- **Le `\s` de Python est différent** : il retire aussi U+001C à U+001F et garde U+180E. On utilise donc une classe explicite, notée `PCRE_SPACE` dans la suite :
+**Règle actuelle (P18, décision D37 du package PHP, commit PHP `418266e`).**
+- Le PHP retire `/[\p{Z}\x{0009}-\x{000D}\x{0085}.\-]+/u`, l'expression commune aux trois packages PHP.
+- Un test sur PHP 8.5 (PCRE2 10.47), point de code par point de code, montre qu'elle retire exactement 27 points de code :
   ```
-  U+0009 à U+000D, U+0020, U+0085, U+00A0, U+1680, U+180E,
-  U+2000 à U+200A, U+2028, U+2029, U+202F, U+205F, U+3000
+  U+0009 à U+000D, U+0020, U+0085, U+00A0, U+1680,
+  U+2000 à U+200A, U+2028, U+2029, U+202F, U+205F, U+3000,
+  le point et le tiret
   ```
-  La classe est construite à partir de ces points de code (`PCRE_SPACE_CODE_POINTS`).
-  L'expression de nettoyage est `[PCRE_SPACE.\-]+` (contenu de la classe, plus le point et le tiret).
-- U+200B et U+FEFF ne sont retirés ni en PHP ni en Python.
+- En Python, la classe est écrite en dur à partir de ces points de code (`SEPARATOR_CODE_POINTS`). Elle n'est tirée ni de `unicodedata`, dont la version Unicode varie selon l'interpréteur, ni du `\s` de Python, qui retire aussi U+001C à U+001F.
+- **Ne sont pas retirés**, donc donnent `INVALID_CHARACTERS` : U+180E (caractère de format depuis Unicode 6.3), U+200B, U+FEFF, U+001C à U+001F.
+
+**L'ancienne règle et ce qu'il en reste.**
+- Avant D37, le PHP retirait `/[\s.\-]+/u`. Avec `/u`, le `\s` de PCRE2 correspond exactement à `\h` et `\v` : le même ensemble, **plus U+180E**.
+- Le motif qui lit l'ancien numéro dans un enregistrement APIEx (§9.5) garde `\s` en PHP. Le port Python garde donc cet ancien ensemble pour ce motif seulement, sous le nom `PCRE_SPACE` (`PCRE_SPACE_CODE_POINTS`, soit les séparateurs plus U+180E).
 
 ### 7.2 IFU
 
@@ -545,7 +549,7 @@ Chaque règle a été vérifiée sur PHP 8.5 :
 - **`creation_date`** : texte de forme `[0-9]{4}-[0-9]{2}-[0-9]{2}` (`fullmatch`), puis `date(a, m, j)`. Une date impossible donne `None`.
 - **`former_number`** : motif PHP traduit sans `re.IGNORECASE`. Avec ce drapeau, Python ferait correspondre `i` à `İ` et `ı`, ce que PCRE ne fait pas. On utilise donc :
   - des classes explicites, `[aA][nN][cC][iI][eE][nN]`, `[éÉeE]`, `[°oO]`… ;
-  - `PCRE_SPACE` (§7.1) à la place de `\s` ;
+  - `PCRE_SPACE` (§7.1), l'ensemble `\s` de PCRE avec U+180E, à la place du `\s` de Python ;
   - `.` sans `DOTALL`, qui exclut seulement `\n`, comme le PCRE du PHP (vérifié : il accepte `\r`, U+0085 et U+2028) ;
   - `re.search`, comme `preg_match`.
 

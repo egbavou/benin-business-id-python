@@ -11,6 +11,31 @@ NARROW_NBSP = chr(0x202F)
 EM_SPACE = chr(0x2003)
 # A lone surrogate is the Python counterpart of the PHP vectors' invalid UTF-8 byte "\xFF".
 INVALID_UTF8 = chr(0xDCFF)
+# Not separators (decision D37): U+180E has been a format character since Unicode 6.3.
+MONGOLIAN_VOWEL_SEPARATOR = chr(0x180E)
+ZERO_WIDTH_SPACE = chr(0x200B)
+
+# The separators removed from an identifier, as listed in the PHP vectors (strippedSeparators).
+STRIPPED_SEPARATORS = [
+    chr(code_point)
+    for code_point in (
+        0x0009,
+        0x000A,
+        0x000B,
+        0x000C,
+        0x000D,
+        0x0020,
+        0x0085,
+        0x00A0,
+        0x1680,
+        *range(0x2000, 0x200B),
+        0x2028,
+        0x2029,
+        0x202F,
+        0x205F,
+        0x3000,
+    )
+]
 
 
 def fullwidth(digits: str) -> str:
@@ -31,6 +56,10 @@ def valid_ifu() -> list[tuple[str, str, TaxpayerType, int]]:
         ("1201500000000", "1201500000000", TaxpayerType.INDIVIDUAL, 2015),
         ("0201500000000", "0201500000000", TaxpayerType.INDIVIDUAL, 2015),
         ("2201500000000", "2201500000000", TaxpayerType.INDIVIDUAL, 2015),
+        *(
+            (f"32024{separator}44139959", "3202444139959", TaxpayerType.COMPANY, 2024)
+            for separator in STRIPPED_SEPARATORS
+        ),
     ]
 
 
@@ -41,6 +70,8 @@ def invalid_ifu() -> list[tuple[str, FailureReason]]:
         ("320244413995", FailureReason.INVALID_LENGTH),
         ("32024441399590", FailureReason.INVALID_LENGTH),
         ("3202444139A59", FailureReason.INVALID_CHARACTERS),
+        (f"32024{MONGOLIAN_VOWEL_SEPARATOR}44139959", FailureReason.INVALID_CHARACTERS),
+        (f"32024{ZERO_WIDTH_SPACE}44139959", FailureReason.INVALID_CHARACTERS),
         ("IFU : 3202444139959", FailureReason.INVALID_CHARACTERS),
         ("BJ-IFU-3200901353510", FailureReason.INVALID_CHARACTERS),
         ("7202400000000", FailureReason.UNKNOWN_TAXPAYER_TYPE),
@@ -74,12 +105,18 @@ def valid_rccm() -> list[tuple[str, str, int]]:
         ("RB/COT/20 E 2841", "RB/COT/20 E 2841", 2020),
         ("RB/ABC/26 B 11379", "RB/ABC/26 B 11379", 2026),
         (f"{EM_SPACE}RB/PKO/18{NBSP}A{NARROW_NBSP}00001", "RB/PKO/18 A 00001", 2018),
+        *(
+            (f"RB/COT/18{separator}B/22272", "RB/COT/18 B 22272", 2018)
+            for separator in STRIPPED_SEPARATORS
+        ),
     ]
 
 
 def invalid_rccm() -> list[tuple[str, FailureReason]]:
     return [
         ("RCCM : RB/COT/24 B 39072", FailureReason.INVALID_CHARACTERS),
+        (f"RB/COT/18{MONGOLIAN_VOWEL_SEPARATOR}B 22272", FailureReason.INVALID_CHARACTERS),
+        (f"RB/COT/18{ZERO_WIDTH_SPACE}B 22272", FailureReason.INVALID_CHARACTERS),
         ("RB/COT/07 B 2058 (Ancien n\N{DEGREE SIGN}: 02 B 1545)", FailureReason.INVALID_CHARACTERS),
         ("RCCM RB/COT/25 B 41160", FailureReason.INVALID_STRUCTURE),
         ("RB/PKO 18 B 277 du 13/06/2018", FailureReason.INVALID_STRUCTURE),
