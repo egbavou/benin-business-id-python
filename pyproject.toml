@@ -36,6 +36,12 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/egbavou/benin-business-id-python"
+Repository = "https://github.com/egbavou/benin-business-id-python"
+Issues = "https://github.com/egbavou/benin-business-id-python/issues"
+Funding = "https://github.com/sponsors/egbavou"
+
 [project.optional-dependencies]
 httpx = ["httpx>=0.27"]
 django = ["Django>=5.2"]
